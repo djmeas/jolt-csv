@@ -1,24 +1,27 @@
-# Nuxt + SQLite + Tailwind Starter
+# Jolt CSV
 
-A full-stack Nuxt 4 starter template. Clone it, tweak it, ship it. No config headaches—just code.
+A CSV parser and viewer webapp. Paste or upload CSV files, view them in a sortable table, and filter rows with flexible conditions.
 
-## What's included
+## Features
 
-- **Nuxt 4** – Vue 3, file-based routing, server API routes
-- **SQLite + Drizzle ORM** – Type-safe schema, migrations, zero config
-- **Tailwind CSS** – Utility-first styling
-- **Auth** – Email/password signup, encrypted sessions, admin roles
+- **Paste or upload** – Paste CSV text or drag-and-drop `.csv` / `.txt` files
+- **Table view** – Sticky headers, horizontal/vertical scroll for large datasets
+- **Filtering** – Match ALL or ANY conditions across columns (equals, contains, starts with, ends with, not equals, is empty, is not empty)
+
+## Tech stack
+
+- **Nuxt 4** – Vue 3, file-based routing
+- **Tailwind CSS** – Styling
+- **PapaParse** – CSV parsing
 
 ## Quick start
 
 ```bash
 npm install
-cp .env.example .env   # Set NUXT_SESSION_PASSWORD (32+ chars)
-npm run db:migrate
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) and go to the CSV viewer.
 
 ## Commands
 
@@ -26,19 +29,17 @@ Open [http://localhost:3000](http://localhost:3000).
 |---------|-------------|
 | `npm run dev` | Start dev server |
 | `npm run build` | Build for production |
-| `npm run db:generate` | Generate migrations |
-| `npm run db:migrate` | Apply migrations |
+| `npm run preview` | Preview production build |
 
 ## Project structure
 
 ```
 app/
-├── pages/          # Routes (landing, dashboard, login, register)
-├── middleware/     # Auth & guest guards
-server/
-├── api/auth/       # Login, register, logout
-├── db/             # Drizzle schema & migrations
-└── utils/          # DB instance
+├── pages/
+│   ├── index.vue   # Landing page
+│   └── csv.vue     # CSV parser/viewer
+└── composables/
+    └── useCsvParser.ts   # PapaParse-based CSV parsing
 ```
 
 See [AGENTS.md](./AGENTS.md) for full documentation.
