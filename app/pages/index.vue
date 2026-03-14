@@ -55,6 +55,12 @@ const { loggedIn, user } = useUserSession()
           A full-stack Nuxt starter with SQLite, auth, and Tailwind. Clone it, tweak it, ship it. No config headaches—just code.
         </p>
         <div class="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+          <NuxtLink
+            to="/csv"
+            class="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors"
+          >
+            Open CSV Viewer
+          </NuxtLink>
           <a
             href="https://github.com/djmeas/jolt-template"
             target="_blank"
