@@ -55,14 +55,8 @@ const { loggedIn, user } = useUserSession()
           A full-stack Nuxt starter with SQLite, auth, and Tailwind. Clone it, tweak it, ship it. No config headaches—just code.
         </p>
         <div class="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-          <NuxtLink
-            to="/register"
-            class="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 transition-colors"
-          >
-            Get started
-          </NuxtLink>
           <a
-            href="https://github.com"
+            href="https://github.com/djmeas/jolt-template"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-flex items-center justify-center px-8 py-4 rounded-xl border border-slate-600 text-slate-300 font-medium hover:border-slate-500 hover:text-white transition-colors"

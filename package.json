@@ -9,7 +9,10 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:prepare": "node scripts/ensure-data-dir.mjs",
+    "predb:migrate": "npm run db:prepare",
+    "predev": "npm run db:prepare"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
