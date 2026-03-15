@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import Papa from 'papaparse'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { CsvParseResult } from '~/composables/useCsvParser'
 
 const { parseCsv } = useCsvParser()
+const { loadWorkbook, getSheetData, exportToXlsx, clearWorkbook } = useXlsxParser()
 
 const ROW_HEIGHT = 36
 const HEADER_HEIGHT = 40
@@ -12,6 +14,13 @@ const csvData = ref<CsvParseResult | null>(null)
 const parseError = ref('')
 const isDragging = ref(false)
 const activeTab = ref<'paste' | 'upload'>('paste')
+
+// File type and xlsx sheet state
+const fileType = ref<'csv' | 'xlsx'>('csv')
+const originalFilename = ref('export')
+const activeSheetName = ref('')
+const xlsxSheetNames = ref<string[]>([])
+const showSheetPicker = ref(false)
 
 // Filter state
 type FilterMode = 'all' | 'any'
@@ -26,10 +35,13 @@ interface FilterCondition {
 const filterMode = ref<FilterMode>('all')
 const filterConditions = ref<FilterCondition[]>([{ columnIndex: 0, operator: 'contains', value: '' }])
 
-// Sort state: column index and direction
+// Sort state
 type SortDirection = 'asc' | 'desc'
 const sortColumn = ref<number | null>(null)
 const sortDirection = ref<SortDirection>('asc')
+
+const showCellBorders = ref(true)
+const editMode = ref(false)
 
 const FILTER_OPERATORS: { value: FilterOperator; label: string; needsValue: boolean }[] = [
   { value: 'equals', label: 'equals', needsValue: true },
@@ -41,9 +53,18 @@ const FILTER_OPERATORS: { value: FilterOperator; label: string; needsValue: bool
   { value: 'is not empty', label: 'is not empty', needsValue: false }
 ]
 
+function resetTableState() {
+  filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
+  sortColumn.value = null
+  sortDirection.value = 'asc'
+}
+
 function handleParse() {
   parseError.value = ''
   csvData.value = null
+  fileType.value = 'csv'
+  originalFilename.value = 'export'
+  activeSheetName.value = ''
 
   const text = pasteText.value.trim()
   if (!text) {
@@ -54,18 +75,38 @@ function handleParse() {
   const result = parseCsv(text)
   if (result) {
     csvData.value = result
-    filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
-    sortColumn.value = null
-    sortDirection.value = 'asc'
+    resetTableState()
   } else {
     parseError.value = 'Could not parse CSV. Check the format and try again.'
   }
 }
 
+function isXlsxFile(file: File): boolean {
+  return (
+    file.name.endsWith('.xlsx') ||
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  )
+}
+
+function isCsvOrTxtFile(file: File): boolean {
+  return (
+    file.name.endsWith('.csv') ||
+    file.name.endsWith('.txt') ||
+    file.type === 'text/csv' ||
+    file.type === 'text/plain'
+  )
+}
+
 function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (file) readFile(file)
+  if (file) {
+    if (isXlsxFile(file)) {
+      readXlsxFile(file)
+    } else {
+      readCsvFile(file)
+    }
+  }
   input.value = ''
 }
 
@@ -73,10 +114,14 @@ function handleDrop(event: DragEvent) {
   isDragging.value = false
   event.preventDefault()
   const file = event.dataTransfer?.files?.[0]
-  if (file && (file.name.endsWith('.csv') || file.type === 'text/csv' || file.type === 'text/plain')) {
-    readFile(file)
+  if (!file) return
+
+  if (isXlsxFile(file)) {
+    readXlsxFile(file)
+  } else if (isCsvOrTxtFile(file)) {
+    readCsvFile(file)
   } else {
-    parseError.value = 'Please drop a CSV file (.csv or .txt).'
+    parseError.value = 'Please drop a CSV (.csv, .txt) or Excel (.xlsx) file.'
   }
 }
 
@@ -89,9 +134,11 @@ function handleDragLeave() {
   isDragging.value = false
 }
 
-function readFile(file: File) {
+function readCsvFile(file: File) {
   parseError.value = ''
   csvData.value = null
+  fileType.value = 'csv'
+  originalFilename.value = file.name.replace(/\.[^.]+$/, '')
 
   const reader = new FileReader()
   reader.onload = (e) => {
@@ -100,14 +147,66 @@ function readFile(file: File) {
     const result = parseCsv(text)
     if (result) {
       csvData.value = result
-      filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
-      sortColumn.value = null
-      sortDirection.value = 'asc'
+      resetTableState()
     } else {
       parseError.value = 'Could not parse the file. It may not be valid CSV.'
     }
   }
   reader.readAsText(file, 'UTF-8')
+}
+
+function readXlsxFile(file: File) {
+  parseError.value = ''
+  csvData.value = null
+  fileType.value = 'xlsx'
+  originalFilename.value = file.name.replace(/\.[^.]+$/, '')
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const buffer = e.target?.result as ArrayBuffer
+    if (!buffer) {
+      parseError.value = 'Could not read the file.'
+      return
+    }
+
+    try {
+      const sheetNames = loadWorkbook(buffer)
+      if (sheetNames.length === 0) {
+        parseError.value = 'The Excel file contains no sheets.'
+        return
+      }
+
+      if (sheetNames.length === 1) {
+        loadSheet(sheetNames[0]!)
+      } else {
+        xlsxSheetNames.value = sheetNames
+        showSheetPicker.value = true
+      }
+    } catch {
+      parseError.value = 'Could not parse the Excel file. Make sure it is a valid .xlsx file.'
+    }
+  }
+  reader.readAsArrayBuffer(file)
+}
+
+function loadSheet(sheetName: string) {
+  const result = getSheetData(sheetName)
+  if (result) {
+    activeSheetName.value = sheetName
+    csvData.value = result
+    showSheetPicker.value = false
+    resetTableState()
+  } else {
+    parseError.value = `Could not parse sheet "${sheetName}".`
+    showSheetPicker.value = false
+  }
+}
+
+function cancelSheetPicker() {
+  showSheetPicker.value = false
+  xlsxSheetNames.value = []
+  fileType.value = 'csv'
+  clearWorkbook()
 }
 
 function clear() {
@@ -117,6 +216,14 @@ function clear() {
   filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
   sortColumn.value = null
   sortDirection.value = 'asc'
+  editMode.value = false
+  showExportDialog.value = false
+  showSheetPicker.value = false
+  xlsxSheetNames.value = []
+  activeSheetName.value = ''
+  fileType.value = 'csv'
+  originalFilename.value = 'export'
+  clearWorkbook()
 }
 
 function addFilterCondition() {
@@ -169,23 +276,24 @@ function rowMatchesFilters(row: string[]): boolean {
 
 const filteredRows = computed(() => {
   if (!csvData.value) return []
-  let rows = csvData.value.rows.filter((row) => rowMatchesFilters(row))
+  const withIndex = csvData.value.rows
+    .map((row, i) => ({ row, originalIndex: i }))
+    .filter(({ row }) => rowMatchesFilters(row))
   if (sortColumn.value !== null) {
     const col = sortColumn.value
     const dir = sortDirection.value
-    rows = [...rows].sort((a, b) => {
-      const aVal = (a[col] ?? '').trim()
-      const bVal = (b[col] ?? '').trim()
+    return [...withIndex].sort((a, b) => {
+      const aVal = (a.row[col] ?? '').trim()
+      const bVal = (b.row[col] ?? '').trim()
       const cmp = aVal.localeCompare(bVal, undefined, { numeric: true })
       return dir === 'asc' ? cmp : -cmp
     })
   }
-  return rows
+  return withIndex
 })
 
 function handleHeaderClick(columnIndex: number) {
   if (sortColumn.value === columnIndex) {
-    // Cycle: asc -> desc -> no sort -> asc
     if (sortDirection.value === 'asc') {
       sortDirection.value = 'desc'
     } else {
@@ -206,25 +314,21 @@ function formatHeader(text: string): string {
     .join(' ')
 }
 
-// Pre-scan for max content length per column (headers + all rows) for stable column widths
 const columnWidths = computed(() => {
   if (!csvData.value) return ''
   const { headers, rows } = csvData.value
   const colCount = headers.length
   const maxLen = new Array<number>(colCount).fill(0)
 
-  // Include headers
   headers.forEach((h, i) => {
     maxLen[i] = Math.max(maxLen[i], (h ?? '').length)
   })
-  // Scan all rows
   rows.forEach((row) => {
     for (let i = 0; i < colCount; i++) {
       maxLen[i] = Math.max(maxLen[i], (row[i] ?? '').length)
     }
   })
 
-  // min 15ch (~120px for monospace), add 2ch buffer; use ch for monospace-friendly sizing
   const tracks = maxLen.map((len) => {
     const ch = Math.max(15, len + 2)
     return `minmax(120px, ${ch}ch)`
@@ -250,6 +354,76 @@ function paddedRow(row: string[]): string[] {
   while (padded.length < len) padded.push('')
   return padded.slice(0, len)
 }
+
+function updateHeader(colIndex: number, value: string) {
+  if (csvData.value) {
+    csvData.value.headers[colIndex] = value
+  }
+}
+
+function updateCell(rowIndex: number, colIndex: number, value: string) {
+  if (csvData.value) {
+    const row = csvData.value.rows[rowIndex]
+    if (row) {
+      while (row.length <= colIndex) row.push('')
+      row[colIndex] = value
+    }
+  }
+}
+
+const showExportDialog = ref(false)
+
+const hasActiveFilters = computed(() => {
+  if (!csvData.value) return false
+  return filteredRows.value.length !== csvData.value.rows.length
+})
+
+const exportLabel = computed(() =>
+  fileType.value === 'xlsx' ? 'Export XLSX' : 'Export CSV'
+)
+
+function doExport(rows: string[][]) {
+  if (!csvData.value) return
+
+  if (fileType.value === 'xlsx') {
+    exportToXlsx(
+      csvData.value.headers,
+      rows,
+      activeSheetName.value || 'Sheet1',
+      `${originalFilename.value}.xlsx`
+    )
+  } else {
+    const data = [csvData.value.headers, ...rows]
+    const csv = Papa.unparse(data)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${originalFilename.value}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+}
+
+function exportFile() {
+  if (!csvData.value) return
+  if (!hasActiveFilters.value) {
+    doExport(csvData.value.rows)
+    return
+  }
+  showExportDialog.value = true
+}
+
+function exportAllRows() {
+  if (!csvData.value) return
+  doExport(csvData.value.rows)
+  showExportDialog.value = false
+}
+
+function exportFilteredRows() {
+  doExport(filteredRows.value.map((f) => f.row))
+  showExportDialog.value = false
+}
 </script>
 
 <template>
@@ -261,7 +435,7 @@ function paddedRow(row: string[]): string[] {
     <header class="shrink-0 border-b border-slate-800/50">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
         <NuxtLink to="/" class="text-lg font-semibold text-white hover:text-slate-200 transition-colors">
-          ← Jolt CSV
+          ← Jolt Sheets
         </NuxtLink>
       </div>
     </header>
@@ -270,10 +444,10 @@ function paddedRow(row: string[]): string[] {
     <main v-if="!csvData" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-white">
-          CSV Viewer
+          CSV &amp; Excel Viewer
         </h1>
         <p class="mt-2 text-slate-400">
-          Paste your CSV data or upload a file to get started.
+          Paste CSV data or upload a .csv or .xlsx file to get started.
         </p>
       </div>
 
@@ -307,7 +481,7 @@ function paddedRow(row: string[]): string[] {
 
       <!-- Input area -->
       <div class="mb-8">
-        <!-- Paste tab -->
+        <!-- Paste tab (CSV only) -->
         <div v-show="activeTab === 'paste'" class="space-y-4">
           <textarea
             v-model="pasteText"
@@ -323,22 +497,22 @@ Bob,bob@example.com,user"
           <div class="flex gap-3">
             <button
               type="button"
-              @click="handleParse"
               class="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
+              @click="handleParse"
             >
               Parse CSV
             </button>
             <button
               type="button"
-              @click="clear"
               class="px-6 py-2.5 rounded-lg bg-slate-700 text-slate-300 font-medium hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
+              @click="clear"
             >
               Clear
             </button>
           </div>
         </div>
 
-        <!-- Upload tab -->
+        <!-- Upload tab (CSV + XLSX) -->
         <div v-show="activeTab === 'upload'" class="space-y-4">
           <div
             :class="[
@@ -353,7 +527,7 @@ Bob,bob@example.com,user"
           >
             <input
               type="file"
-              accept=".csv,.txt,text/csv,text/plain"
+              accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               @change="handleFileSelect"
             >
@@ -364,13 +538,13 @@ Bob,bob@example.com,user"
                 </svg>
               </div>
               <p class="text-white font-medium">
-                Drop your CSV file here
+                Drop your file here
               </p>
               <p class="mt-1 text-sm text-slate-400">
                 or click to browse
               </p>
               <p class="mt-2 text-xs text-slate-500">
-                .csv or .txt files
+                .csv, .txt, or .xlsx files
               </p>
             </div>
           </div>
@@ -383,22 +557,52 @@ Bob,bob@example.com,user"
       </div>
     </main>
 
-    <!-- Full-screen table when CSV is loaded -->
+    <!-- Full-screen table when data is loaded -->
     <div v-else class="flex-1 flex flex-col min-h-0">
-      <div class="shrink-0 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-700/50 flex items-center justify-between bg-slate-900/50">
-        <span class="text-sm font-medium text-slate-300">
-          {{ csvData.headers.length }} columns · {{ filteredRows.length }} rows
-          <span v-if="filteredRows.length !== csvData.rows.length" class="text-slate-500">
-            (of {{ csvData.rows.length }})
+      <div class="shrink-0 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-700/50 flex items-center justify-between gap-4 bg-slate-900/50">
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-slate-300">
+            {{ csvData.headers.length }} columns · {{ filteredRows.length }} rows
+            <span v-if="filteredRows.length !== csvData.rows.length" class="text-slate-500">
+              (of {{ csvData.rows.length }})
+            </span>
+            <span v-if="fileType === 'xlsx' && activeSheetName" class="text-slate-500">
+              · sheet: {{ activeSheetName }}
+            </span>
           </span>
-        </span>
-        <button
-          type="button"
-          @click="clear"
-          class="text-sm text-slate-400 hover:text-white transition-colors"
-        >
-          Clear & start over
-        </button>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              v-model="showCellBorders"
+              type="checkbox"
+              class="rounded border-slate-600 bg-slate-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+            >
+            <span class="text-sm text-slate-400">Cell borders</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              v-model="editMode"
+              type="checkbox"
+              class="rounded border-slate-600 bg-slate-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+            >
+            <span class="text-sm text-slate-400">Edit mode</span>
+          </label>
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            class="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors"
+            @click="exportFile"
+          >
+            {{ exportLabel }}
+          </button>
+          <button
+            type="button"
+            class="text-sm text-slate-400 hover:text-white transition-colors"
+            @click="clear"
+          >
+            Clear &amp; start over
+          </button>
+        </div>
       </div>
 
       <!-- Filter bar -->
@@ -472,9 +676,9 @@ Bob,bob@example.com,user"
               >
               <button
                 type="button"
-                @click="removeFilterCondition(idx)"
                 class="p-1.5 rounded text-slate-400 hover:text-red-400 hover:bg-slate-700/50 transition-colors"
                 title="Remove condition"
+                @click="removeFilterCondition(idx)"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -483,8 +687,8 @@ Bob,bob@example.com,user"
             </div>
             <button
               type="button"
-              @click="addFilterCondition"
               class="px-2.5 py-1.5 rounded border border-dashed border-slate-600 text-slate-400 text-sm hover:border-slate-500 hover:text-slate-300 transition-colors"
+              @click="addFilterCondition"
             >
               + Add condition
             </button>
@@ -492,55 +696,156 @@ Bob,bob@example.com,user"
         </div>
       </div>
 
-      <!-- Virtualized scroll container: single grid so header and rows share column widths -->
+      <!-- Virtualized scroll container -->
       <div ref="scrollRef" class="csv-scroll">
         <div
           class="csv-grid"
+          :class="{ 'csv-grid-borders': showCellBorders }"
           :style="{
             gridTemplateColumns: columnWidths,
             gridTemplateRows: `${HEADER_HEIGHT}px repeat(${filteredRows.length}, ${ROW_HEIGHT}px)`
           }"
         >
-          <!-- Header cells (row 1) -->
-          <button
-            v-for="(header, i) in csvData.headers"
-            :key="`h-${i}`"
-            type="button"
-            class="csv-th csv-th-sortable"
-            @click="handleHeaderClick(i)"
-          >
-            <span>{{ formatHeader(header) || `(empty ${i + 1})` }}</span>
-            <span
-              v-if="sortColumn === i"
-              class="csv-th-sort-icon"
-              :aria-label="sortDirection === 'asc' ? 'Ascending' : 'Descending'"
+          <!-- Header cells -->
+          <template v-for="(header, i) in csvData.headers" :key="`h-${i}`">
+            <button
+              v-if="!editMode"
+              type="button"
+              class="csv-th csv-th-sortable"
+              @click="handleHeaderClick(i)"
             >
-              {{ sortDirection === 'asc' ? '↑' : '↓' }}
-            </span>
-          </button>
-          <!-- Virtualized data cells: placed in correct grid rows -->
+              <span>{{ formatHeader(header) || `(empty ${i + 1})` }}</span>
+              <span
+                v-if="sortColumn === i"
+                class="csv-th-sort-icon"
+                :aria-label="sortDirection === 'asc' ? 'Ascending' : 'Descending'"
+              >
+                {{ sortDirection === 'asc' ? '↑' : '↓' }}
+              </span>
+            </button>
+            <input
+              v-else
+              type="text"
+              :value="header ?? ''"
+              class="csv-th csv-th-input"
+              @input="updateHeader(i, ($event.target as HTMLInputElement).value)"
+            >
+          </template>
+
+          <!-- Virtualized data cells -->
           <template v-for="virtualRow in rowVirtualizer.getVirtualItems()" :key="virtualRow.key">
-            <div
-              v-for="(cell, cellIndex) in paddedRow(filteredRows[virtualRow.index])"
-              :key="`${virtualRow.key}-${cellIndex}`"
-              class="csv-td"
-              :style="{ gridRow: virtualRow.index + 2 }"
-            >
-              {{ cell ?? '' }}
-            </div>
+            <template v-for="(cell, cellIndex) in paddedRow(filteredRows[virtualRow.index]!.row)" :key="`${virtualRow.key}-${cellIndex}`">
+              <div
+                v-if="!editMode"
+                class="csv-td"
+                :style="{ gridRow: virtualRow.index + 2 }"
+              >
+                {{ cell ?? '' }}
+              </div>
+              <input
+                v-else
+                type="text"
+                :value="cell ?? ''"
+                class="csv-td csv-td-input"
+                :style="{ gridRow: virtualRow.index + 2 }"
+                @input="updateCell(filteredRows[virtualRow.index]!.originalIndex, cellIndex, ($event.target as HTMLInputElement).value)"
+              >
+            </template>
           </template>
         </div>
       </div>
     </div>
+
+    <!-- Sheet picker modal (xlsx with multiple sheets) -->
+    <Teleport to="body">
+      <div
+        v-if="showSheetPicker"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        @click.self="cancelSheetPicker"
+      >
+        <div
+          class="rounded-xl bg-slate-800 border border-slate-600 p-6 shadow-xl w-full max-w-sm mx-4"
+          role="dialog"
+          aria-labelledby="sheet-picker-title"
+          aria-modal="true"
+        >
+          <h2 id="sheet-picker-title" class="text-lg font-semibold text-white mb-1">
+            Select a Sheet
+          </h2>
+          <p class="text-slate-400 text-sm mb-5">
+            This workbook has {{ xlsxSheetNames.length }} sheets. Choose one to load.
+          </p>
+          <div class="flex flex-col gap-2 max-h-72 overflow-y-auto">
+            <button
+              v-for="name in xlsxSheetNames"
+              :key="name"
+              type="button"
+              class="w-full text-left px-4 py-3 rounded-lg bg-slate-700/50 text-slate-200 text-sm font-medium hover:bg-indigo-600 hover:text-white transition-colors border border-slate-600 hover:border-indigo-500"
+              @click="loadSheet(name)"
+            >
+              {{ name }}
+            </button>
+          </div>
+          <button
+            type="button"
+            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            @click="cancelSheetPicker"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Export dialog (when filters are active) -->
+    <Teleport to="body">
+      <div
+        v-if="csvData && showExportDialog"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        @click.self="showExportDialog = false"
+      >
+        <div
+          class="rounded-xl bg-slate-800 border border-slate-600 p-6 shadow-xl max-w-sm mx-4"
+          role="dialog"
+          aria-labelledby="export-dialog-title"
+          aria-modal="true"
+        >
+          <h2 id="export-dialog-title" class="text-lg font-semibold text-white mb-3">
+            {{ exportLabel }}
+          </h2>
+          <p class="text-slate-400 text-sm mb-4">
+            Would you like to export all rows or only filtered rows?
+          </p>
+          <div class="flex gap-3">
+            <button
+              type="button"
+              class="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors"
+              @click="exportAllRows"
+            >
+              All rows
+            </button>
+            <button
+              type="button"
+              class="flex-1 px-4 py-2 rounded-lg bg-slate-700 text-slate-200 font-medium hover:bg-slate-600 transition-colors"
+              @click="exportFilteredRows"
+            >
+              Filtered rows
+            </button>
+          </div>
+          <button
+            type="button"
+            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            @click="showExportDialog = false"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-/*
-  The scroll container handles ALL overflow (both x and y).
-  The grid inside has NO overflow set, so position:sticky on
-  the header cells has a valid scroll ancestor to stick within.
-*/
 .csv-scroll {
   flex: 1;
   min-height: 0;
@@ -557,6 +862,7 @@ Bob,bob@example.com,user"
   top: 0;
   z-index: 10;
   padding: 0.75rem 1rem;
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -574,7 +880,9 @@ Bob,bob@example.com,user"
   border: none;
   text-align: left;
   width: 100%;
-  font: inherit;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .csv-th-sortable:hover {
@@ -593,5 +901,64 @@ Bob,bob@example.com,user"
   color: rgb(203 213 225);
   white-space: nowrap;
   border-bottom: 1px solid rgb(51 65 85 / 0.3);
+}
+
+.csv-td-input,
+.csv-th-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid rgb(51 65 85 / 0.3);
+  outline: none;
+  background: transparent;
+}
+
+.csv-td-input {
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  color: rgb(203 213 225);
+  caret-color: rgb(203 213 225);
+}
+
+.csv-th-input {
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  color: rgb(148 163 184);
+  caret-color: rgb(148 163 184);
+  background: rgb(30 41 59);
+}
+
+.csv-td-input:focus,
+.csv-th-input:focus {
+  outline: 1px solid rgb(99 102 241);
+  outline-offset: -1px;
+}
+
+.csv-grid-borders {
+  border-left: 1px solid rgb(51 65 85 / 0.5);
+  border-top: 1px solid rgb(51 65 85 / 0.5);
+}
+
+.csv-grid-borders .csv-th {
+  border-right: 1px solid rgb(51 65 85 / 0.6);
+  border-bottom: 1px solid rgb(51 65 85 / 0.6);
+}
+
+.csv-grid-borders .csv-td {
+  border-right: 1px solid rgb(51 65 85 / 0.4);
+  border-bottom: 1px solid rgb(51 65 85 / 0.4);
+}
+
+.csv-grid-borders .csv-td-input {
+  border-right: 1px solid rgb(51 65 85 / 0.4);
+  border-bottom: 1px solid rgb(51 65 85 / 0.4);
+}
+
+.csv-grid-borders .csv-th-input {
+  border-right: 1px solid rgb(51 65 85 / 0.6);
+  border-bottom: 1px solid rgb(51 65 85 / 0.6);
 }
 </style>
