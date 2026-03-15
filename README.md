@@ -27,7 +27,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and go to the CSV & Excel viewer.
+Open [http://localhost:3000](http://localhost:3000) — the CSV & Excel viewer is the home page.
 
 ## Commands
 
@@ -42,8 +42,8 @@ Open [http://localhost:3000](http://localhost:3000) and go to the CSV & Excel vi
 ```
 app/
 ├── pages/
-│   ├── index.vue   # Landing page
-│   └── csv.vue     # CSV & Excel viewer (filter, sort, edit, export)
+│   ├── index.vue   # Home — CSV & Excel viewer (paste/upload, filter, sort, edit, export)
+│   └── csv.vue     # Redirects to /
 └── composables/
     ├── useCsvParser.ts   # PapaParse-based CSV parsing
     └── useXlsxParser.ts  # SheetJS-based Excel read/write, sheet picker
