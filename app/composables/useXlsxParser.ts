@@ -10,7 +10,7 @@ export function useXlsxParser() {
     return _workbook.SheetNames
   }
 
-  function getSheetData(sheetName: string): CsvParseResult | null {
+  function getSheetData(sheetName: string, firstRowIsHeader = true): CsvParseResult | null {
     if (!_workbook) return null
 
     const sheet = _workbook.Sheets[sheetName]
@@ -19,11 +19,20 @@ export function useXlsxParser() {
     const data = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' })
     if (data.length === 0) return null
 
-    const headers = (data[0] as unknown[]).map((h) => String(h ?? '').trim())
-    const rows = (data.slice(1) as unknown[][]).map((row) =>
+    const stringifyRow = (row: unknown[]) =>
       row.map((cell) => String(cell ?? ''))
-    )
 
+    if (firstRowIsHeader) {
+      const headers = (data[0] as unknown[]).map((h) => String(h ?? '').trim())
+      const rows = (data.slice(1) as unknown[][]).map(stringifyRow)
+      return { headers, rows, raw: '' }
+    }
+
+    const rows = (data as unknown[][]).map(stringifyRow)
+    const colCount = rows.length > 0
+      ? Math.max(...rows.map((r) => r.length))
+      : 0
+    const headers = Array.from({ length: colCount }, (_, i) => `Column ${i + 1}`)
     return { headers, rows, raw: '' }
   }
 

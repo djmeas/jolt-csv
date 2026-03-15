@@ -21,6 +21,8 @@ const originalFilename = ref('export')
 const activeSheetName = ref('')
 const xlsxSheetNames = ref<string[]>([])
 const showSheetPicker = ref(false)
+const showHeaderDialog = ref(false)
+const pendingSheetName = ref('')
 
 // Filter state
 type FilterMode = 'all' | 'any'
@@ -190,15 +192,35 @@ function readXlsxFile(file: File) {
 }
 
 function loadSheet(sheetName: string) {
-  const result = getSheetData(sheetName)
+  showSheetPicker.value = false
+  pendingSheetName.value = sheetName
+  showHeaderDialog.value = true
+}
+
+function applySheetWithHeaderChoice(firstRowIsHeader: boolean) {
+  const sheetName = pendingSheetName.value
+  if (!sheetName) return
+
+  const result = getSheetData(sheetName, firstRowIsHeader)
   if (result) {
     activeSheetName.value = sheetName
     csvData.value = result
-    showSheetPicker.value = false
     resetTableState()
   } else {
     parseError.value = `Could not parse sheet "${sheetName}".`
-    showSheetPicker.value = false
+  }
+
+  showHeaderDialog.value = false
+  pendingSheetName.value = ''
+}
+
+function cancelHeaderDialog() {
+  showHeaderDialog.value = false
+  pendingSheetName.value = ''
+  if (xlsxSheetNames.value.length > 1) {
+    showSheetPicker.value = true
+  } else {
+    cancelSheetPicker()
   }
 }
 
@@ -219,6 +241,8 @@ function clear() {
   editMode.value = false
   showExportDialog.value = false
   showSheetPicker.value = false
+  showHeaderDialog.value = false
+  pendingSheetName.value = ''
   xlsxSheetNames.value = []
   activeSheetName.value = ''
   fileType.value = 'csv'
@@ -321,11 +345,11 @@ const columnWidths = computed(() => {
   const maxLen = new Array<number>(colCount).fill(0)
 
   headers.forEach((h, i) => {
-    maxLen[i] = Math.max(maxLen[i], (h ?? '').length)
+    maxLen[i] = Math.max(maxLen[i] ?? 0, (h ?? '').length)
   })
   rows.forEach((row) => {
     for (let i = 0; i < colCount; i++) {
-      maxLen[i] = Math.max(maxLen[i], (row[i] ?? '').length)
+      maxLen[i] = Math.max(maxLen[i] ?? 0, (row[i] ?? '').length)
     }
   })
 
@@ -575,19 +599,31 @@ Bob,bob@example.com,user"
             </span>
           </span>
           <label class="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              v-model="showCellBorders"
-              type="checkbox"
-              class="rounded border-slate-600 bg-slate-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
-            >
+            <div class="relative w-10 h-6 rounded-full bg-slate-700 transition-colors has-[:checked]:bg-indigo-600">
+              <input
+                v-model="showCellBorders"
+                type="checkbox"
+                class="sr-only peer"
+              >
+              <span
+                class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 peer-checked:translate-x-4"
+                aria-hidden
+              />
+            </div>
             <span class="text-sm text-slate-400">Cell borders</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              v-model="editMode"
-              type="checkbox"
-              class="rounded border-slate-600 bg-slate-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
-            >
+            <div class="relative w-10 h-6 rounded-full bg-slate-700 transition-colors has-[:checked]:bg-indigo-600">
+              <input
+                v-model="editMode"
+                type="checkbox"
+                class="sr-only peer"
+              >
+              <span
+                class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 peer-checked:translate-x-4"
+                aria-hidden
+              />
+            </div>
             <span class="text-sm text-slate-400">Edit mode</span>
           </label>
         </div>
@@ -730,7 +766,7 @@ Bob,bob@example.com,user"
             <input
               v-else
               type="text"
-              :value="header ?? ''"
+              :value="formatHeader(header ?? '') || `(empty ${i + 1})`"
               class="csv-th csv-th-input"
               @input="updateHeader(i, ($event.target as HTMLInputElement).value)"
             >
@@ -759,6 +795,52 @@ Bob,bob@example.com,user"
         </div>
       </div>
     </div>
+
+    <!-- Header row dialog (xlsx) -->
+    <Teleport to="body">
+      <div
+        v-if="showHeaderDialog"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+        @click.self="cancelHeaderDialog"
+      >
+        <div
+          class="rounded-xl bg-slate-800 border border-slate-600 p-6 shadow-xl w-full max-w-sm mx-4"
+          role="dialog"
+          aria-labelledby="header-dialog-title"
+          aria-modal="true"
+        >
+          <h2 id="header-dialog-title" class="text-lg font-semibold text-white mb-1">
+            First Row
+          </h2>
+          <p class="text-slate-400 text-sm mb-5">
+            Is the first row a header row (column names)?
+          </p>
+          <div class="flex gap-3">
+            <button
+              type="button"
+              class="flex-1 px-4 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors"
+              @click="applySheetWithHeaderChoice(true)"
+            >
+              Yes, it's a header
+            </button>
+            <button
+              type="button"
+              class="flex-1 px-4 py-2.5 rounded-lg bg-slate-700 text-slate-200 font-medium hover:bg-slate-600 transition-colors"
+              @click="applySheetWithHeaderChoice(false)"
+            >
+              No, it's data
+            </button>
+          </div>
+          <button
+            type="button"
+            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            @click="cancelHeaderDialog"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Sheet picker modal (xlsx with multiple sheets) -->
     <Teleport to="body">
