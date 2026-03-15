@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
+    "@tanstack/vue-virtual": "^3.13.22",
     "better-sqlite3": "^12.8.0",
     "drizzle-orm": "^0.45.1",
     "nuxt": "^4.4.2",

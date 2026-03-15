@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { CsvParseResult } from '~/composables/useCsvParser'
 
 const { parseCsv } = useCsvParser()
+
+const ROW_HEIGHT = 36
+const HEADER_HEIGHT = 40
 
 const pasteText = ref('')
 const csvData = ref<CsvParseResult | null>(null)
@@ -21,6 +25,11 @@ interface FilterCondition {
 
 const filterMode = ref<FilterMode>('all')
 const filterConditions = ref<FilterCondition[]>([{ columnIndex: 0, operator: 'contains', value: '' }])
+
+// Sort state: column index and direction
+type SortDirection = 'asc' | 'desc'
+const sortColumn = ref<number | null>(null)
+const sortDirection = ref<SortDirection>('asc')
 
 const FILTER_OPERATORS: { value: FilterOperator; label: string; needsValue: boolean }[] = [
   { value: 'equals', label: 'equals', needsValue: true },
@@ -46,6 +55,8 @@ function handleParse() {
   if (result) {
     csvData.value = result
     filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
+    sortColumn.value = null
+    sortDirection.value = 'asc'
   } else {
     parseError.value = 'Could not parse CSV. Check the format and try again.'
   }
@@ -90,6 +101,8 @@ function readFile(file: File) {
     if (result) {
       csvData.value = result
       filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
+      sortColumn.value = null
+      sortDirection.value = 'asc'
     } else {
       parseError.value = 'Could not parse the file. It may not be valid CSV.'
     }
@@ -102,6 +115,8 @@ function clear() {
   csvData.value = null
   parseError.value = ''
   filterConditions.value = [{ columnIndex: 0, operator: 'contains', value: '' }]
+  sortColumn.value = null
+  sortDirection.value = 'asc'
 }
 
 function addFilterCondition() {
@@ -154,8 +169,79 @@ function rowMatchesFilters(row: string[]): boolean {
 
 const filteredRows = computed(() => {
   if (!csvData.value) return []
-  return csvData.value.rows.filter((row) => rowMatchesFilters(row))
+  let rows = csvData.value.rows.filter((row) => rowMatchesFilters(row))
+  if (sortColumn.value !== null) {
+    const col = sortColumn.value
+    const dir = sortDirection.value
+    rows = [...rows].sort((a, b) => {
+      const aVal = (a[col] ?? '').trim()
+      const bVal = (b[col] ?? '').trim()
+      const cmp = aVal.localeCompare(bVal, undefined, { numeric: true })
+      return dir === 'asc' ? cmp : -cmp
+    })
+  }
+  return rows
 })
+
+function handleHeaderClick(columnIndex: number) {
+  if (sortColumn.value === columnIndex) {
+    // Cycle: asc -> desc -> no sort -> asc
+    if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+    } else {
+      sortColumn.value = null
+      sortDirection.value = 'asc'
+    }
+  } else {
+    sortColumn.value = columnIndex
+    sortDirection.value = 'asc'
+  }
+}
+
+function formatHeader(text: string): string {
+  return (text ?? '')
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+// Pre-scan for max content length per column (headers + all rows) for stable column widths
+const columnWidths = computed(() => {
+  if (!csvData.value) return ''
+  const { headers, rows } = csvData.value
+  const colCount = headers.length
+  const maxLen = new Array<number>(colCount).fill(0)
+
+  // Include headers
+  headers.forEach((h, i) => {
+    maxLen[i] = Math.max(maxLen[i], (h ?? '').length)
+  })
+  // Scan all rows
+  rows.forEach((row) => {
+    for (let i = 0; i < colCount; i++) {
+      maxLen[i] = Math.max(maxLen[i], (row[i] ?? '').length)
+    }
+  })
+
+  // min 15ch (~120px for monospace), add 2ch buffer; use ch for monospace-friendly sizing
+  const tracks = maxLen.map((len) => {
+    const ch = Math.max(15, len + 2)
+    return `minmax(120px, ${ch}ch)`
+  })
+  return tracks.join(' ')
+})
+
+const scrollRef = ref<HTMLElement | null>(null)
+const rowVirtualizer = useVirtualizer(
+  computed(() => ({
+    count: filteredRows.value.length,
+    getScrollElement: () => scrollRef.value,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+    paddingStart: csvData.value ? HEADER_HEIGHT : 0
+  }))
+)
 
 function paddedRow(row: string[]): string[] {
   if (!csvData.value) return row
@@ -406,24 +492,39 @@ Bob,bob@example.com,user"
         </div>
       </div>
 
-      <!-- Single scroll container; grid inside has no overflow so sticky works -->
-      <div class="csv-scroll">
+      <!-- Virtualized scroll container: single grid so header and rows share column widths -->
+      <div ref="scrollRef" class="csv-scroll">
         <div
           class="csv-grid"
-          :style="{ gridTemplateColumns: `repeat(${csvData.headers.length}, minmax(120px, auto))` }"
+          :style="{
+            gridTemplateColumns: columnWidths,
+            gridTemplateRows: `${HEADER_HEIGHT}px repeat(${filteredRows.length}, ${ROW_HEIGHT}px)`
+          }"
         >
-          <div
+          <!-- Header cells (row 1) -->
+          <button
             v-for="(header, i) in csvData.headers"
             :key="`h-${i}`"
-            class="csv-th"
+            type="button"
+            class="csv-th csv-th-sortable"
+            @click="handleHeaderClick(i)"
           >
-            {{ header || `(empty ${i + 1})` }}
-          </div>
-          <template v-for="(row, rowIndex) in filteredRows" :key="rowIndex">
+            <span>{{ formatHeader(header) || `(empty ${i + 1})` }}</span>
+            <span
+              v-if="sortColumn === i"
+              class="csv-th-sort-icon"
+              :aria-label="sortDirection === 'asc' ? 'Ascending' : 'Descending'"
+            >
+              {{ sortDirection === 'asc' ? '↑' : '↓' }}
+            </span>
+          </button>
+          <!-- Virtualized data cells: placed in correct grid rows -->
+          <template v-for="virtualRow in rowVirtualizer.getVirtualItems()" :key="virtualRow.key">
             <div
-              v-for="(cell, cellIndex) in paddedRow(row)"
-              :key="`${rowIndex}-${cellIndex}`"
+              v-for="(cell, cellIndex) in paddedRow(filteredRows[virtualRow.index])"
+              :key="`${virtualRow.key}-${cellIndex}`"
               class="csv-td"
+              :style="{ gridRow: virtualRow.index + 2 }"
             >
               {{ cell ?? '' }}
             </div>
@@ -458,12 +559,31 @@ Bob,bob@example.com,user"
   padding: 0.75rem 1rem;
   font-size: 0.75rem;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   color: rgb(148 163 184);
   background: rgb(30 41 59);
   border-bottom: 1px solid rgb(51 65 85 / 0.5);
   white-space: nowrap;
+}
+
+.csv-th-sortable {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  border: none;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+}
+
+.csv-th-sortable:hover {
+  color: rgb(203 213 225);
+}
+
+.csv-th-sort-icon {
+  color: rgb(129 140 248);
+  font-size: 0.875rem;
 }
 
 .csv-td {
