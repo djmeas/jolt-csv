@@ -2,9 +2,11 @@
 import Papa from 'papaparse'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { CsvParseResult } from '~/composables/useCsvParser'
+import { useTheme } from '../../composables/useTheme'
 
 const { parseCsv } = useCsvParser()
 const { loadWorkbook, getSheetData, exportToXlsx, clearWorkbook } = useXlsxParser()
+const { isDark, toggle: toggleTheme } = useTheme()
 
 const ROW_HEIGHT = 36
 const HEADER_HEIGHT = 40
@@ -452,29 +454,52 @@ function exportFilteredRows() {
 
 <template>
   <div
-    class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col"
-    :class="csvData ? 'h-screen overflow-hidden' : 'min-h-screen'"
+    class="bg-slate-50 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col"
+    :class="[csvData ? 'h-screen overflow-hidden' : 'min-h-screen', { dark: isDark }]"
   >
     <!-- Header -->
-    <header class="shrink-0 border-b border-slate-800/50">
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+    <header class="shrink-0 border-b border-slate-200 dark:border-slate-800/50">
+      <div class="w-full px-4 py-4 flex items-center justify-between">
         <button
           type="button"
-          class="text-lg font-semibold text-white hover:text-slate-200 transition-colors"
+          class="text-lg font-semibold text-slate-900 dark:text-white hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
           @click="clear"
         >
           Jolt Sheets ⚡️
         </button>
+        <label
+          class="flex items-center gap-2 cursor-pointer select-none"
+          @click.prevent="toggleTheme"
+        >
+          <div
+            class="relative w-10 h-6 rounded-full transition-colors"
+            :class="isDark ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'"
+          >
+            <span
+              class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+              :class="{ 'translate-x-4': isDark }"
+              aria-hidden
+            />
+          </div>
+          <span class="text-slate-600 dark:text-slate-300" aria-hidden>
+            <svg v-if="isDark" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path fill-rule="evenodd" d="M9.528 1.718a.75.75 0 0 1 .162.819A8.97 8.97 0 0 0 9 6a9 9 0 0 0 9 9 8.97 8.97 0 0 0 3.463-.69.75.75 0 0 1 .981.98 10.503 10.503 0 0 1-9.694 6.46c-5.799 0-10.5-4.7-10.5-10.5 0-4.368 2.667-8.112 6.46-9.694a.75.75 0 0 1 .818.162Z" clip-rule="evenodd" />
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+            </svg>
+          </span>
+        </label>
       </div>
     </header>
 
     <!-- Input state: paste/upload form -->
     <main v-if="!csvData" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
       <div class="mb-8">
-        <h1 class="text-3xl font-bold text-white">
+        <h1 class="text-3xl font-bold text-slate-900 dark:text-white">
           CSV &amp; Excel Viewer
         </h1>
-        <p class="mt-2 text-slate-400">
+        <p class="mt-2 text-slate-600 dark:text-slate-400">
           Paste CSV data or upload a .csv or .xlsx file to get started.
         </p>
       </div>
@@ -487,7 +512,7 @@ function exportFilteredRows() {
             'px-4 py-2 rounded-lg font-medium transition-colors',
             activeTab === 'paste'
               ? 'bg-indigo-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+              : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-300 dark:hover:text-white dark:hover:bg-slate-700'
           ]"
           @click="activeTab = 'paste'"
         >
@@ -499,7 +524,7 @@ function exportFilteredRows() {
             'px-4 py-2 rounded-lg font-medium transition-colors',
             activeTab === 'upload'
               ? 'bg-indigo-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+              : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-300 dark:hover:text-white dark:hover:bg-slate-700'
           ]"
           @click="activeTab = 'upload'"
         >
@@ -520,19 +545,19 @@ name,email,role
 Alice,alice@example.com,admin
 Bob,bob@example.com,user"
             rows="8"
-            class="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-800/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm resize-y min-h-[200px]"
+            class="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm resize-y min-h-[200px]"
           />
           <div class="flex gap-3">
             <button
               type="button"
-              class="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
+              class="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 transition-colors"
               @click="handleParse"
             >
               Parse CSV
             </button>
             <button
               type="button"
-              class="px-6 py-2.5 rounded-lg bg-slate-700 text-slate-300 font-medium hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
+              class="px-6 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-300 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 transition-colors"
               @click="clear"
             >
               Clear
@@ -547,7 +572,7 @@ Bob,bob@example.com,user"
               'relative rounded-xl border-2 border-dashed transition-colors cursor-pointer',
               isDragging
                 ? 'border-indigo-500 bg-indigo-500/10'
-                : 'border-slate-600 hover:border-slate-500 bg-slate-800/30'
+                : 'border-slate-400 dark:border-slate-600 hover:border-slate-500 dark:hover:border-slate-500 bg-slate-100 dark:bg-slate-800/30'
             ]"
             @dragover="handleDragOver"
             @dragleave="handleDragLeave"
@@ -560,15 +585,15 @@ Bob,bob@example.com,user"
               @change="handleFileSelect"
             >
             <div class="p-12 text-center">
-              <div class="inline-flex w-14 h-14 rounded-full bg-slate-700/50 items-center justify-center text-slate-400 mb-4">
+              <div class="inline-flex w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700/50 items-center justify-center text-slate-500 dark:text-slate-400 mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
               </div>
-              <p class="text-white font-medium">
+              <p class="text-slate-900 dark:text-white font-medium">
                 Drop your file here
               </p>
-              <p class="mt-1 text-sm text-slate-400">
+              <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">
                 or click to browse
               </p>
               <p class="mt-2 text-xs text-slate-500">
@@ -587,9 +612,9 @@ Bob,bob@example.com,user"
 
     <!-- Full-screen table when data is loaded -->
     <div v-else class="flex-1 flex flex-col min-h-0">
-      <div class="shrink-0 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-700/50 flex items-center justify-between gap-4 bg-slate-900/50">
+      <div class="shrink-0 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-4 bg-slate-100 dark:bg-slate-900/50">
         <div class="flex items-center gap-4">
-          <span class="text-sm font-medium text-slate-300">
+          <span class="text-sm font-medium text-slate-700 dark:text-slate-200">
             {{ csvData.headers.length }} columns · {{ filteredRows.length }} rows
             <span v-if="filteredRows.length !== csvData.rows.length" class="text-slate-500">
               (of {{ csvData.rows.length }})
@@ -599,7 +624,7 @@ Bob,bob@example.com,user"
             </span>
           </span>
           <label class="flex items-center gap-2 cursor-pointer select-none">
-            <div class="relative w-10 h-6 rounded-full bg-slate-700 transition-colors has-[:checked]:bg-indigo-600">
+            <div class="relative w-10 h-6 rounded-full bg-slate-300 dark:bg-slate-700 transition-colors has-[:checked]:bg-indigo-600">
               <input
                 v-model="showCellBorders"
                 type="checkbox"
@@ -610,10 +635,10 @@ Bob,bob@example.com,user"
                 aria-hidden
               />
             </div>
-            <span class="text-sm text-slate-400">Cell borders</span>
+            <span class="text-sm text-slate-600 dark:text-slate-300">Cell borders</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer select-none">
-            <div class="relative w-10 h-6 rounded-full bg-slate-700 transition-colors has-[:checked]:bg-indigo-600">
+            <div class="relative w-10 h-6 rounded-full bg-slate-300 dark:bg-slate-700 transition-colors has-[:checked]:bg-indigo-600">
               <input
                 v-model="editMode"
                 type="checkbox"
@@ -624,7 +649,7 @@ Bob,bob@example.com,user"
                 aria-hidden
               />
             </div>
-            <span class="text-sm text-slate-400">Edit mode</span>
+            <span class="text-sm text-slate-600 dark:text-slate-300">Edit mode</span>
           </label>
         </div>
         <div class="flex items-center gap-3 shrink-0">
@@ -637,7 +662,7 @@ Bob,bob@example.com,user"
           </button>
           <button
             type="button"
-            class="text-sm text-slate-400 hover:text-white transition-colors"
+            class="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
             @click="clear"
           >
             Clear &amp; start over
@@ -646,19 +671,19 @@ Bob,bob@example.com,user"
       </div>
 
       <!-- Filter bar -->
-      <div class="shrink-0 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-700/50 bg-slate-800/30">
+      <div class="shrink-0 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-200 dark:border-slate-700/50 bg-slate-200/50 dark:bg-slate-800/30">
         <div class="flex flex-wrap items-center gap-3">
-          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">
             Filter
           </span>
-          <div class="flex rounded-lg overflow-hidden border border-slate-600">
+          <div class="flex rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600">
             <button
               type="button"
               :class="[
                 'px-3 py-1.5 text-sm font-medium transition-colors',
                 filterMode === 'all'
                   ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-white'
+                  : 'bg-slate-300/50 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               ]"
               @click="filterMode = 'all'"
             >
@@ -670,7 +695,7 @@ Bob,bob@example.com,user"
                 'px-3 py-1.5 text-sm font-medium transition-colors',
                 filterMode === 'any'
                   ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-white'
+                  : 'bg-slate-300/50 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               ]"
               @click="filterMode = 'any'"
             >
@@ -685,7 +710,7 @@ Bob,bob@example.com,user"
             >
               <select
                 v-model.number="cond.columnIndex"
-                class="px-2.5 py-1.5 rounded border border-slate-600 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                class="px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option
                   v-for="(h, i) in csvData.headers"
@@ -697,7 +722,7 @@ Bob,bob@example.com,user"
               </select>
               <select
                 v-model="cond.operator"
-                class="px-2.5 py-1.5 rounded border border-slate-600 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                class="px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option
                   v-for="op in FILTER_OPERATORS"
@@ -712,11 +737,11 @@ Bob,bob@example.com,user"
                 v-model="cond.value"
                 type="text"
                 placeholder="Value"
-                class="px-2.5 py-1.5 rounded border border-slate-600 bg-slate-800 text-slate-200 text-sm placeholder-slate-500 w-32 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                class="px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 text-sm placeholder-slate-500 dark:placeholder-slate-400 w-32 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
               <button
                 type="button"
-                class="p-1.5 rounded text-slate-400 hover:text-red-400 hover:bg-slate-700/50 transition-colors"
+                class="p-1.5 rounded text-slate-500 dark:text-slate-300 hover:text-red-400 hover:bg-slate-300 dark:hover:bg-slate-700/50 transition-colors"
                 title="Remove condition"
                 @click="removeFilterCondition(idx)"
               >
@@ -727,7 +752,7 @@ Bob,bob@example.com,user"
             </div>
             <button
               type="button"
-              class="px-2.5 py-1.5 rounded border border-dashed border-slate-600 text-slate-400 text-sm hover:border-slate-500 hover:text-slate-300 transition-colors"
+              class="px-2.5 py-1.5 rounded border border-dashed border-slate-400 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm hover:border-slate-500 hover:text-slate-300 dark:hover:text-slate-200 transition-colors"
               @click="addFilterCondition"
             >
               + Add condition
@@ -804,15 +829,15 @@ Bob,bob@example.com,user"
         @click.self="cancelHeaderDialog"
       >
         <div
-          class="rounded-xl bg-slate-800 border border-slate-600 p-6 shadow-xl w-full max-w-sm mx-4"
+          class="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 p-6 shadow-xl w-full max-w-sm mx-4"
           role="dialog"
           aria-labelledby="header-dialog-title"
           aria-modal="true"
         >
-          <h2 id="header-dialog-title" class="text-lg font-semibold text-white mb-1">
+          <h2 id="header-dialog-title" class="text-lg font-semibold text-slate-900 dark:text-white mb-1">
             First Row
           </h2>
-          <p class="text-slate-400 text-sm mb-5">
+          <p class="text-slate-600 dark:text-slate-400 text-sm mb-5">
             Is the first row a header row (column names)?
           </p>
           <div class="flex gap-3">
@@ -825,7 +850,7 @@ Bob,bob@example.com,user"
             </button>
             <button
               type="button"
-              class="flex-1 px-4 py-2.5 rounded-lg bg-slate-700 text-slate-200 font-medium hover:bg-slate-600 transition-colors"
+              class="flex-1 px-4 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
               @click="applySheetWithHeaderChoice(false)"
             >
               No, it's data
@@ -833,7 +858,7 @@ Bob,bob@example.com,user"
           </div>
           <button
             type="button"
-            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             @click="cancelHeaderDialog"
           >
             Cancel
@@ -850,15 +875,15 @@ Bob,bob@example.com,user"
         @click.self="cancelSheetPicker"
       >
         <div
-          class="rounded-xl bg-slate-800 border border-slate-600 p-6 shadow-xl w-full max-w-sm mx-4"
+          class="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 p-6 shadow-xl w-full max-w-sm mx-4"
           role="dialog"
           aria-labelledby="sheet-picker-title"
           aria-modal="true"
         >
-          <h2 id="sheet-picker-title" class="text-lg font-semibold text-white mb-1">
+          <h2 id="sheet-picker-title" class="text-lg font-semibold text-slate-900 dark:text-white mb-1">
             Select a Sheet
           </h2>
-          <p class="text-slate-400 text-sm mb-5">
+          <p class="text-slate-600 dark:text-slate-400 text-sm mb-5">
             This workbook has {{ xlsxSheetNames.length }} sheets. Choose one to load.
           </p>
           <div class="flex flex-col gap-2 max-h-72 overflow-y-auto">
@@ -866,7 +891,7 @@ Bob,bob@example.com,user"
               v-for="name in xlsxSheetNames"
               :key="name"
               type="button"
-              class="w-full text-left px-4 py-3 rounded-lg bg-slate-700/50 text-slate-200 text-sm font-medium hover:bg-indigo-600 hover:text-white transition-colors border border-slate-600 hover:border-indigo-500"
+              class="w-full text-left px-4 py-3 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-indigo-600 hover:text-white transition-colors border border-slate-300 dark:border-slate-600 hover:border-indigo-500"
               @click="loadSheet(name)"
             >
               {{ name }}
@@ -874,7 +899,7 @@ Bob,bob@example.com,user"
           </div>
           <button
             type="button"
-            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             @click="cancelSheetPicker"
           >
             Cancel
@@ -891,15 +916,15 @@ Bob,bob@example.com,user"
         @click.self="showExportDialog = false"
       >
         <div
-          class="rounded-xl bg-slate-800 border border-slate-600 p-6 shadow-xl max-w-sm mx-4"
+          class="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 p-6 shadow-xl max-w-sm mx-4"
           role="dialog"
           aria-labelledby="export-dialog-title"
           aria-modal="true"
         >
-          <h2 id="export-dialog-title" class="text-lg font-semibold text-white mb-3">
+          <h2 id="export-dialog-title" class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
             {{ exportLabel }}
           </h2>
-          <p class="text-slate-400 text-sm mb-4">
+          <p class="text-slate-600 dark:text-slate-400 text-sm mb-4">
             Would you like to export all rows or only filtered rows?
           </p>
           <div class="flex gap-3">
@@ -912,7 +937,7 @@ Bob,bob@example.com,user"
             </button>
             <button
               type="button"
-              class="flex-1 px-4 py-2 rounded-lg bg-slate-700 text-slate-200 font-medium hover:bg-slate-600 transition-colors"
+              class="flex-1 px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
               @click="exportFilteredRows"
             >
               Filtered rows
@@ -920,7 +945,7 @@ Bob,bob@example.com,user"
           </div>
           <button
             type="button"
-            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            class="mt-4 w-full text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             @click="showExportDialog = false"
           >
             Cancel
@@ -952,10 +977,16 @@ Bob,bob@example.com,user"
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: rgb(148 163 184);
-  background: rgb(30 41 59);
-  border-bottom: 1px solid rgb(51 65 85 / 0.5);
+  color: rgb(51 65 85);
+  background: rgb(241 245 249);
+  border-bottom: 1px solid rgb(203 213 225);
   white-space: nowrap;
+}
+
+.dark .csv-th {
+  color: rgb(255 255 255);
+  background: rgb(30 41 59);
+  border-bottom-color: rgb(51 65 85 / 0.5);
 }
 
 .csv-th-sortable {
@@ -972,7 +1003,11 @@ Bob,bob@example.com,user"
 }
 
 .csv-th-sortable:hover {
-  color: rgb(203 213 225);
+  color: rgb(71 85 105);
+}
+
+.dark .csv-th-sortable:hover {
+  color: rgb(255 255 255);
 }
 
 .csv-th-sort-icon {
@@ -984,26 +1019,41 @@ Bob,bob@example.com,user"
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-family: ui-monospace, monospace;
-  color: rgb(203 213 225);
+  color: rgb(51 65 85);
   white-space: nowrap;
-  border-bottom: 1px solid rgb(51 65 85 / 0.3);
+  border-bottom: 1px solid rgb(226 232 240);
+}
+
+.dark .csv-td {
+  color: rgb(255 255 255);
+  border-bottom-color: rgb(51 65 85 / 0.3);
 }
 
 .csv-td-input,
 .csv-th-input {
   width: 100%;
   border: none;
-  border-bottom: 1px solid rgb(51 65 85 / 0.3);
+  border-bottom: 1px solid rgb(226 232 240);
   outline: none;
   background: transparent;
+}
+
+.dark .csv-td-input,
+.dark .csv-th-input {
+  border-bottom-color: rgb(51 65 85 / 0.3);
 }
 
 .csv-td-input {
   font-family: ui-monospace, monospace;
   font-size: 0.875rem;
   white-space: nowrap;
-  color: rgb(203 213 225);
-  caret-color: rgb(203 213 225);
+  color: rgb(51 65 85);
+  caret-color: rgb(51 65 85);
+}
+
+.dark .csv-td-input {
+  color: rgb(255 255 255);
+  caret-color: rgb(255 255 255);
 }
 
 .csv-th-input {
@@ -1012,8 +1062,14 @@ Bob,bob@example.com,user"
   font-weight: 600;
   letter-spacing: 0.05em;
   white-space: nowrap;
-  color: rgb(148 163 184);
-  caret-color: rgb(148 163 184);
+  color: rgb(51 65 85);
+  caret-color: rgb(51 65 85);
+  background: rgb(241 245 249);
+}
+
+.dark .csv-th-input {
+  color: rgb(255 255 255);
+  caret-color: rgb(255 255 255);
   background: rgb(30 41 59);
 }
 
@@ -1024,27 +1080,52 @@ Bob,bob@example.com,user"
 }
 
 .csv-grid-borders {
-  border-left: 1px solid rgb(51 65 85 / 0.5);
-  border-top: 1px solid rgb(51 65 85 / 0.5);
+  border-left: 1px solid rgb(203 213 225);
+  border-top: 1px solid rgb(203 213 225);
+}
+
+.dark .csv-grid-borders {
+  border-left-color: rgb(51 65 85 / 0.5);
+  border-top-color: rgb(51 65 85 / 0.5);
 }
 
 .csv-grid-borders .csv-th {
-  border-right: 1px solid rgb(51 65 85 / 0.6);
-  border-bottom: 1px solid rgb(51 65 85 / 0.6);
+  border-right: 1px solid rgb(203 213 225);
+  border-bottom: 1px solid rgb(203 213 225);
+}
+
+.dark .csv-grid-borders .csv-th {
+  border-right-color: rgb(51 65 85 / 0.6);
+  border-bottom-color: rgb(51 65 85 / 0.6);
 }
 
 .csv-grid-borders .csv-td {
-  border-right: 1px solid rgb(51 65 85 / 0.4);
-  border-bottom: 1px solid rgb(51 65 85 / 0.4);
+  border-right: 1px solid rgb(226 232 240);
+  border-bottom: 1px solid rgb(226 232 240);
+}
+
+.dark .csv-grid-borders .csv-td {
+  border-right-color: rgb(51 65 85 / 0.4);
+  border-bottom-color: rgb(51 65 85 / 0.4);
 }
 
 .csv-grid-borders .csv-td-input {
-  border-right: 1px solid rgb(51 65 85 / 0.4);
-  border-bottom: 1px solid rgb(51 65 85 / 0.4);
+  border-right: 1px solid rgb(226 232 240);
+  border-bottom: 1px solid rgb(226 232 240);
+}
+
+.dark .csv-grid-borders .csv-td-input {
+  border-right-color: rgb(51 65 85 / 0.4);
+  border-bottom-color: rgb(51 65 85 / 0.4);
 }
 
 .csv-grid-borders .csv-th-input {
-  border-right: 1px solid rgb(51 65 85 / 0.6);
-  border-bottom: 1px solid rgb(51 65 85 / 0.6);
+  border-right: 1px solid rgb(203 213 225);
+  border-bottom: 1px solid rgb(203 213 225);
+}
+
+.dark .csv-grid-borders .csv-th-input {
+  border-right-color: rgb(51 65 85 / 0.6);
+  border-bottom-color: rgb(51 65 85 / 0.6);
 }
 </style>
