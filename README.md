@@ -29,6 +29,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) — the CSV & Excel viewer is the home page.
 
+## Running with Docker
+
+Ensure you have a `.env` with `NUXT_SESSION_PASSWORD` (32+ characters). Then:
+
+```bash
+docker compose up -d
+```
+
+The app runs on port 3000. SQLite data is stored in the `joltcsv-data` volume. Migrations run automatically on container start.
+
 ## Commands
 
 | Command | Description |

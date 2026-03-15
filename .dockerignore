@@ -1,0 +1,23 @@
+# Dependencies — must be installed inside the image (Linux), not copied from host
+node_modules
+.output
+
+# Local data and env (don’t bake into image)
+.data
+.env
+.env.*
+!.env.example
+
+# Git and IDE
+.git
+.gitignore
+.dockerignore
+.cursor
+*.md
+
+# Misc
+.nuxt
+dist
+coverage
+*.log
+.DS_Store
